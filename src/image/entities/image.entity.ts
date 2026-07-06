@@ -1,4 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeorm';
+import { ImageStatusEnum } from 'src/enums/ImageStatusEnum';
 
 @Entity()
 export class Image {
@@ -22,6 +23,9 @@ export class Image {
 
     @Column({ type: 'int' })
     height: number;
+
+    @Column({ type: 'smallint', default: ImageStatusEnum.PROCESSING })
+    status: ImageStatusEnum;
 
     @CreateDateColumn({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', name: 'created_at' })
     createdAt: Date;

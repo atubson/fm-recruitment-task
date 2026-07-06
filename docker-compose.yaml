@@ -17,6 +17,11 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+  
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '${REDIS_PORT}:6379'
 
   app:
     build:
@@ -26,13 +31,17 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_HOST: postgres
+      REDIS_HOST: redis # service name
+      REDIS_PORT: 6379
+      DATABASE_HOST: postgres # service name
       DATABASE_PORT: 5432
     ports:
       - '${PORT}:${PORT}'
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_started
 
 volumes:
   postgres_data:
