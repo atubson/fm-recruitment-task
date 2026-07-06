@@ -146,6 +146,16 @@ Rebuild the app image before restarting:
 docker compose up -d --build
 ```
 
+On container start, the entrypoint runs pending TypeORM migrations before starting the Nest application.
+
+**When you add a new migration**
+
+Rebuild and restart so the new migration file is included in the image:
+
+```bash
+docker compose up -d --build
+```
+
 ## Run tests
 
 ```bash

@@ -18,7 +18,9 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
+COPY docker-entrypoint.sh ./docker-entrypoint.sh
+RUN sed -i 's/\r$//' docker-entrypoint.sh && chmod +x docker-entrypoint.sh
 
 EXPOSE 3000
 
-CMD ["node", "dist/main.js"]
+ENTRYPOINT ["sh", "./docker-entrypoint.sh"]
