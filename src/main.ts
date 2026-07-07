@@ -1,8 +1,22 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { ValidationPipe } from '@nestjs/common';
+import { ValidationException } from './common/exceptions/validation.exception';
+import { ValidationExceptionFilter } from './common/filters/validation-exception.filter';
+import { flattenValidationErrors } from './common/utils/format-validation-errors.util';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  await app.listen(process.env.PORT ?? 3000);
+    const app = await NestFactory.create(AppModule);
+    app.useGlobalFilters(new ValidationExceptionFilter());
+    app.useGlobalPipes(
+        new ValidationPipe({
+            transform: true,
+            whitelist: true,
+            forbidNonWhitelisted: true,
+            exceptionFactory: (errors) =>
+                new ValidationException(flattenValidationErrors(errors)),
+        }),
+    );
+    await app.listen(process.env.PORT ?? 3000);
 }
 bootstrap();

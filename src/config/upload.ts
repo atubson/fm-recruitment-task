@@ -1,0 +1,26 @@
+const parseLimit = (value: string | undefined, fallback: number): number =>
+    Number(value) || fallback;
+
+export const imageLimits = {
+    maxWidth: parseLimit(process.env.IMAGE_MAX_WIDTH, 4000),
+    maxHeight: parseLimit(process.env.IMAGE_MAX_HEIGHT, 4000),
+    minWidth: parseLimit(process.env.IMAGE_MIN_WIDTH, 10),
+    minHeight: parseLimit(process.env.IMAGE_MIN_HEIGHT, 10),
+};
+
+export default () => ({
+    upload: {
+        maxSize: Number(process.env.FILE_MAX_SIZE) || 5242880,
+        maxWidth: imageLimits.maxWidth,
+        maxHeight: imageLimits.maxHeight,
+        minWidth: imageLimits.minWidth,
+        minHeight: imageLimits.minHeight,
+        allowedMimeTypes: [
+            'image/jpeg',
+            'image/png',
+            'image/webp',
+            'image/gif',
+            'image/avif',
+        ],
+    },
+});
