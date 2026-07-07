@@ -2,7 +2,7 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Job } from 'bullmq';
-import { extname } from 'path';
+import { parse } from 'path';
 import { Repository } from 'typeorm';
 import { ImageStatusEnum } from '../../../enums/ImageStatusEnum';
 import { S3Service } from '../../s3/s3.service';
@@ -12,7 +12,10 @@ import {
 } from '../constants/image-queue.constants';
 import { ProcessImageJobData } from '../interfaces/process-image-job.interface';
 import { Image } from '../entities/image.entity';
-import { resizeImage } from '../utils/resize-image.util';
+import {
+    processImageToWebp,
+    WEBP_MIME_TYPE,
+} from '../utils/process-image.util';
 import { randomUUID } from 'crypto';
 
 @Processor(IMAGE_QUEUE)
@@ -49,7 +52,7 @@ export class ImageProcessor extends WorkerHost {
 
         try {
             const original = await this.s3Service.download(tmpKey);
-            const processed = await resizeImage(
+            const processed = await processImageToWebp(
                 original,
                 image.width,
                 image.height,
@@ -57,11 +60,12 @@ export class ImageProcessor extends WorkerHost {
 
             const finalKey = this.buildFinalKey(image.originalName);
 
-            await this.s3Service.upload(finalKey, processed, image.mimetype);
+            await this.s3Service.upload(finalKey, processed, WEBP_MIME_TYPE);
             await this.s3Service.delete(tmpKey);
 
             await this.imageRepository.update(image.id, {
                 path: finalKey,
+                mimetype: WEBP_MIME_TYPE,
                 status: ImageStatusEnum.UPLOADED,
             });
         } catch (error) {
@@ -79,6 +83,7 @@ export class ImageProcessor extends WorkerHost {
     }
 
     private buildFinalKey(originalName: string): string {
-        return `images/${randomUUID()}-${originalName}`;
+        const { name } = parse(originalName);
+        return `images/${randomUUID()}-${name}.webp`;
     }
 }

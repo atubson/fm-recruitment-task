@@ -8,19 +8,23 @@ export const imageLimits = {
     minHeight: parseLimit(process.env.IMAGE_MIN_HEIGHT, 10),
 };
 
+export const ALLOWED_IMAGE_MIME_TYPES = [
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'image/gif',
+    'image/avif',
+] as const;
+
+export const DEFAULT_FILE_MAX_SIZE = 5242880;
+
 export default () => ({
     upload: {
-        maxSize: Number(process.env.FILE_MAX_SIZE) || 5242880,
+        maxSize: Number(process.env.FILE_MAX_SIZE) || DEFAULT_FILE_MAX_SIZE,
         maxWidth: imageLimits.maxWidth,
         maxHeight: imageLimits.maxHeight,
         minWidth: imageLimits.minWidth,
         minHeight: imageLimits.minHeight,
-        allowedMimeTypes: [
-            'image/jpeg',
-            'image/png',
-            'image/webp',
-            'image/gif',
-            'image/avif',
-        ],
+        allowedMimeTypes: [...ALLOWED_IMAGE_MIME_TYPES],
     },
 });

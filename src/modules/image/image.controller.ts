@@ -11,14 +11,17 @@ import {
     ParseIntPipe,
     Query,
 } from '@nestjs/common';
-import { CreateImageDto } from './dto/create-image.dto';
+import { CreateImageDto, CreateImageUploadDto, CreateImageResponseDto, ImageResponseDto, PaginatedImageResponseDto } from './dto';
 import { ImageUploadInterceptor } from '../../common/interceptors/image-upload.interceptor';
 import { ImageFileValidationPipe } from './pipes/image-file-validation.pipe';
-import { ImageResponseDto } from './dto';
 import { ImageStatusResponseDto } from './dto/image-status-response.dto';
-import { CreateImageResponseDto } from './dto/create-image-response.dto';
 import { FilterImagesQueryDto } from './dto/filter-images-query.dto';
-import { PaginatedResponseDto } from '../../common/dto';
+import { ApiAcceptedResponse, ApiBody, ApiConsumes, ApiOkResponse } from '@nestjs/swagger';
+import {
+    ApiImageIdParamErrors,
+    ApiValidationErrorResponse,
+    ApiNotFoundErrorResponse,
+} from '../../common/swagger/api-error-responses.decorator';
 
 @Controller('images')
 export class ImageController {
@@ -26,12 +29,21 @@ export class ImageController {
 
     @Get()
     @HttpCode(200)
-    async getImages(@Query() query: FilterImagesQueryDto): Promise<PaginatedResponseDto<ImageResponseDto>> {
+    @ApiOkResponse({ type: PaginatedImageResponseDto })
+    @ApiValidationErrorResponse()
+    async getImages(@Query() query: FilterImagesQueryDto): Promise<PaginatedImageResponseDto> {
         return this.imageService.getImages(query);
     }
 
     @Post()
     @HttpCode(202)
+    @ApiConsumes('multipart/form-data')
+    @ApiBody({ type: CreateImageUploadDto })
+    @ApiAcceptedResponse({
+        type: CreateImageResponseDto,
+        description: 'Image accepted for asynchronous processing',
+    })
+    @ApiValidationErrorResponse()
     @UseInterceptors(ImageUploadInterceptor)
     async create(
         @UploadedFile(ImageFileValidationPipe)
@@ -43,12 +55,18 @@ export class ImageController {
 
     @Get(':id/status')
     @HttpCode(200)
+    @ApiOkResponse({ type: ImageStatusResponseDto })
+    @ApiImageIdParamErrors()
+    @ApiNotFoundErrorResponse()
     async getStatus(@Param('id', ParseIntPipe) id: number): Promise<ImageStatusResponseDto> {
         return this.imageService.getImageStatus(id);
     }
 
     @Get(':id')
     @HttpCode(200)
+    @ApiOkResponse({ type: ImageResponseDto })
+    @ApiImageIdParamErrors()
+    @ApiNotFoundErrorResponse()
     async getImage(@Param('id', ParseIntPipe) id: number): Promise<ImageResponseDto> {
         return this.imageService.getImage(id);
     }

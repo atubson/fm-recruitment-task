@@ -18,7 +18,7 @@ import { ImageStatusResponseDto } from './dto/image-status-response.dto';
 import { Image } from './entities/image.entity';
 import { ProcessImageJobData } from './interfaces/process-image-job.interface';
 import { FilterImagesQueryDto, ImageResponseDto } from './dto';
-import { PaginatedResponseDto } from 'src/common/dto';
+import { PaginatedResponseDto } from '../../common/dto';
 
 @Injectable()
 export class ImageService {
@@ -95,28 +95,28 @@ export class ImageService {
             offset,
             limit,
             total,
-            data: images.map(image => ({
-                id: image.id,
-                url: this.s3Service.getObjectUrl(image.path),
-                title: image.title,
-                width: image.width,
-                height: image.height,
-            })),
+            data: await Promise.all(images.map((image) => this.toImageResponse(image))),
         };
     }
 
     async getImage(id: number): Promise<ImageResponseDto> {
         const image = await this.imageRepository.findOne({
-            where: { id },
+            where: { id, status: ImageStatusEnum.UPLOADED },
             select: { id: true, path: true, originalName: true, title: true, width: true, height: true },
         });
         if (!image) {
             throw new NotFoundException('Image not found');
         }
 
+        return this.toImageResponse(image);
+    }
+
+    private async toImageResponse(
+        image: Pick<Image, 'id' | 'path' | 'title' | 'width' | 'height'>,
+    ): Promise<ImageResponseDto> {
         return {
             id: image.id,
-            url: this.s3Service.getObjectUrl(image.path),
+            url: await this.s3Service.getSignedObjectUrl(image.path),
             title: image.title,
             width: image.width,
             height: image.height,

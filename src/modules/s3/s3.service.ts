@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 export interface S3UploadResult {
   /** Object key within the bucket — store this in DB to build URLs later */
@@ -11,12 +12,13 @@ export interface S3UploadResult {
 export class S3Service {
   private readonly client: S3Client;
   private readonly bucket: string;
-  private readonly region: string;
+  private readonly signedUrlExpiresIn: number;
 
   constructor(private readonly config: ConfigService) {
-    this.region = this.config.getOrThrow<string>('s3.region');
+    const region = this.config.getOrThrow<string>('s3.region');
+    this.signedUrlExpiresIn = this.config.get<number>('s3.signedUrlExpiresIn') ?? 3600;
     this.client = new S3Client({
-      region: this.region,
+      region,
       credentials: {
         accessKeyId: this.config.getOrThrow<string>('s3.accessKeyId'),
         secretAccessKey: this.config.getOrThrow<string>('s3.secretAccessKey'),
@@ -62,8 +64,14 @@ export class S3Service {
     );
   }
 
-  getObjectUrl(key: string): string {
-    const encodedKey = key.split('/').map(encodeURIComponent).join('/');
-    return `https://${this.bucket}.s3.${this.region}.amazonaws.com/${encodedKey}`;
+  async getSignedObjectUrl(key: string): Promise<string> {
+    return getSignedUrl(
+      this.client,
+      new GetObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+      }),
+      { expiresIn: this.signedUrlExpiresIn },
+    );
   }
 }

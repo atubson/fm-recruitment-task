@@ -1,79 +1,331 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Image Processor API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+REST API for uploading, processing, and serving images. Built with **NestJS**, **PostgreSQL**, **Redis**, **BullMQ**, **Sharp**, and **Amazon S3**.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Features
 
-## Description
+- Upload images in common formats (JPEG, PNG, WebP, GIF, AVIF)
+- Resize, crop, and optimize images to requested dimensions (output stored as WebP)
+- Store image metadata in PostgreSQL and files in S3
+- Asynchronous background processing via Redis queue
+- Paginated image listing with case-insensitive title filter
+- Presigned S3 URLs for secure, temporary image access
+- OpenAPI (Swagger) documentation at `/api`
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Tech stack
 
-## Project setup
+| Layer | Technology |
+| ----- | ---------- |
+| Runtime | Node.js |
+| Framework | NestJS |
+| Database | PostgreSQL + TypeORM |
+| Queue | Redis + BullMQ |
+| Storage | Amazon S3 |
+| Image processing | Sharp |
+| API docs | Swagger (OpenAPI 3) |
+
+## Getting started
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) (see `engines` in `package.json`)
+- [Docker](https://docs.docker.com/get-docker/) and Docker Compose
+- AWS S3 bucket and credentials (for file storage)
+
+PostgreSQL and Redis are provided via Docker — you do not need to install them locally.
+
+### 1. Configure environment
 
 ```bash
-$ npm install
+cp .env.example .env
 ```
 
-## Compile and run the project
+Edit `.env` and set at least your AWS S3 credentials. For **local development** (running the Nest app on your machine), keep:
+
+```
+DATABASE_HOST=localhost
+REDIS_HOST=localhost
+```
+
+See [Environment variables](#environment-variables) for the full list.
+
+### 2. Start PostgreSQL and Redis (Docker)
+
+Start the infrastructure first. The application needs a running database and Redis before it can start.
+
+**First time (applies database migrations automatically):**
+
+On the first run, start all services including `app`. The Docker entrypoint runs pending TypeORM migrations before the application starts — no manual `migration:run` is required.
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+docker compose up -d
 ```
+
+Verify everything is up:
+
+```bash
+curl http://localhost:3000
+```
+
+Swagger UI: **http://localhost:3000/api**
+
+**Day-to-day (infrastructure only):**
+
+If you prefer to run the Nest app locally (see step 3), you only need PostgreSQL and Redis from Docker:
+
+```bash
+docker compose up -d postgres redis
+```
+
+> **Note:** Migrations are applied when the `app` container starts. On a fresh database, run `docker compose up -d` once (with `app`) before switching to local development, or start `app` briefly: `docker compose up -d app && docker compose stop app`.
+
+### 3. Run the application locally (optional)
+
+For development with hot reload, stop the Docker `app` container (if running) and start the app from your terminal. It will connect to the Dockerized PostgreSQL and Redis on `localhost`:
+
+```bash
+docker compose stop app   # only if the app container is running
+
+npm install
+npm run start:dev
+```
+
+The API listens on `http://localhost:3000`. Swagger UI at **http://localhost:3000/api**.
+
+### Running entirely in Docker
+
+To run the full stack in containers (production-like):
+
+```bash
+docker compose up -d --build
+```
+
+Migrations run automatically on container start. See the [Docker](#docker) section for more commands and details.
+
+## API documentation (Swagger)
+
+Interactive OpenAPI documentation is available while the application is running:
+
+**http://localhost:3000/api**
+
+Swagger describes all endpoints, request/response schemas, validation rules, file upload constraints, and possible error responses (400, 404, 422).
+
+## Image processing flow
+
+Uploading an image triggers **asynchronous processing**. The API responds immediately without waiting for resize/optimization to finish. This keeps response times fast even when processing large files, which can take several seconds under load.
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API as NestJS API
+    participant DB as PostgreSQL
+    participant Redis as Redis Queue
+    participant Worker as Image Processor
+    participant S3 as Amazon S3
+
+    Client->>API: POST /images (file + title + width + height)
+    API->>API: Validate file type, size, and content
+    API->>S3: Upload original to tmp/
+    API->>DB: Save image record (status: PENDING)
+    API->>Redis: Enqueue processing job
+    API-->>Client: 202 Accepted { id, status }
+
+    Redis->>Worker: Pick up job
+    Worker->>DB: Update status → PROCESSING
+    Worker->>S3: Download original from tmp/
+    Worker->>Worker: Resize, crop, convert to WebP
+    Worker->>S3: Upload processed file to images/
+    Worker->>S3: Delete tmp/ original
+    Worker->>DB: Update path, mimetype, status → UPLOADED
+
+    Client->>API: GET /images/:id/status
+    API-->>Client: { status, status_label }
+
+    Client->>API: GET /images/:id
+    API->>S3: Generate presigned URL (local signing)
+    API-->>Client: { id, url, title, width, height }
+```
+
+### Image statuses
+
+Because processing runs in the background, the client can poll the status endpoint:
+
+| Status | Value | Label | Meaning |
+| ------ | ----- | ----- | ------- |
+| Pending | `1` | `PENDING` | Uploaded, waiting in queue |
+| Processing | `2` | `PROCESSING` | Worker is resizing/optimizing |
+| Uploaded | `3` | `UPLOADED` | Ready — available via GET endpoints |
+| Failed | `4` | `FAILED` | Processing failed |
+
+Only images with status **UPLOADED** appear in `GET /images` and `GET /images/:id`.
+
+## API endpoints
+
+### `POST /images`
+
+Upload an image for processing.
+
+- **Content-Type:** `multipart/form-data`
+- **Fields:**
+  - `image` (file) — required; allowed types: `image/jpeg`, `image/png`, `image/webp`, `image/gif`, `image/avif`; max size: 5 MB (configurable via `FILE_MAX_SIZE`)
+  - `title` (string) — required
+  - `width` (integer) — target width in pixels
+  - `height` (integer) — target height in pixels
+- **Response:** `202 Accepted`
+
+```json
+{
+  "id": 1,
+  "status": 1,
+  "status_label": "PENDING"
+}
+```
+
+The image is resized/cropped to the given dimensions, converted to WebP, and optimized in the background.
+
+---
+
+### `GET /images/:id/status`
+
+Check processing status of an uploaded image. Added because processing is asynchronous — the client needs a way to know when the image is ready.
+
+- **Response:** `200 OK`
+
+```json
+{
+  "status": 3,
+  "status_label": "UPLOADED"
+}
+```
+
+---
+
+### `GET /images/:id`
+
+Get a single processed image.
+
+- **Response:** `200 OK` (only when status is `UPLOADED`)
+
+```json
+{
+  "id": 1,
+  "url": "https://bucket.s3.region.amazonaws.com/images/uuid-name.webp?X-Amz-Signature=...",
+  "title": "My photo",
+  "width": 800,
+  "height": 600
+}
+```
+
+Returns `404` if the image does not exist or is not yet processed.
+
+---
+
+### `GET /images`
+
+List processed images with pagination and optional title filter.
+
+- **Query parameters:**
+  - `offset` (number, default: `0`)
+  - `limit` (number, default: `20`, max: `100`)
+  - `title` (string, optional) — case-insensitive "contains" search
+- **Response:** `200 OK`
+
+```json
+{
+  "offset": 0,
+  "limit": 20,
+  "total": 42,
+  "data": [
+    {
+      "id": 1,
+      "url": "https://...",
+      "title": "My photo",
+      "width": 800,
+      "height": 600
+    }
+  ]
+}
+```
+
+## Presigned S3 URLs
+
+Image files are stored in a **private** S3 bucket. Direct S3 URLs without authentication return `AccessDenied`.
+
+When you call `GET /images` or `GET /images/:id`, the API returns a **presigned URL** — a temporary link that grants read access to a specific object for a limited time.
+
+- Signing happens **locally** on the server (no extra AWS API call per URL)
+- Default expiry: **1 hour** (`AWS_S3_SIGNED_URL_EXPIRES`, in seconds)
+- After expiry, request a fresh URL by calling the API again
+- AWS credentials never leave the server; only the signed URL is sent to the client
+
+## Environment variables
+
+| Variable | Description |
+| -------- | ----------- |
+| `PORT` | HTTP port (default: `3000`) |
+| `DATABASE_HOST` | PostgreSQL host (`localhost` locally, `postgres` in Docker) |
+| `DATABASE_PORT` | PostgreSQL port |
+| `DATABASE_USER` | Database user |
+| `DATABASE_PASSWORD` | Database password |
+| `DATABASE_NAME` | Database name |
+| `REDIS_HOST` | Redis host (`localhost` locally, `redis` in Docker) |
+| `REDIS_PORT` | Redis port |
+| `AWS_REGION` | S3 bucket region |
+| `AWS_ACCESS_KEY_ID` | AWS access key |
+| `AWS_SECRET_ACCESS_KEY` | AWS secret key |
+| `AWS_S3_BUCKET` | S3 bucket name |
+| `AWS_S3_SIGNED_URL_EXPIRES` | Presigned URL lifetime in seconds (default: `3600`) |
+| `FILE_MAX_SIZE` | Max upload size in bytes (default: `5242880` = 5 MB) |
+| `IMAGE_MAX_WIDTH` / `IMAGE_MAX_HEIGHT` | Max allowed dimensions |
+| `IMAGE_MIN_WIDTH` / `IMAGE_MIN_HEIGHT` | Min allowed dimensions |
+
+See `.env.example` for a full template.
 
 ## Docker
 
-Run the Nest application and PostgreSQL together using Docker Compose.
+Run PostgreSQL, Redis, and optionally the application using Docker Compose.
 
 ### Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/)
 - [Docker Compose](https://docs.docker.com/compose/) (included with Docker Desktop)
 
-### First-time setup
+### Quick start
 
-1. Copy the environment template and adjust values if needed:
-
-```bash
-cp .env.example .env
-```
-
-2. Build and start both services in the background:
+1. Copy and configure `.env` (see [Getting started](#getting-started)).
+2. Start all services:
 
 ```bash
 docker compose up -d
 ```
 
-3. Verify the app is running:
+3. Verify:
 
 ```bash
 curl http://localhost:3000
 ```
 
-The API is available at `http://localhost:3000`. PostgreSQL is exposed on `localhost:5432`.
+The API is at `http://localhost:3000`. Swagger UI at `http://localhost:3000/api`.
+
+Migrations run **automatically** when the `app` container starts — you do not need to run `npm run migration:run` manually.
+
+### Local development with Docker infrastructure
+
+A common workflow is to keep PostgreSQL and Redis in Docker, but run the Nest app on your host machine for faster iteration:
+
+```bash
+# Start database and queue
+docker compose up -d postgres redis
+
+# On first setup only — apply migrations via the app container
+docker compose up -d app && docker compose stop app
+
+# Run the app locally
+npm install
+npm run start:dev
+```
+
+Ensure `.env` uses `DATABASE_HOST=localhost` and `REDIS_HOST=localhost` so the local process connects to the exposed Docker ports.
 
 ### Common commands
 
@@ -90,6 +342,7 @@ docker compose logs -f
 # View logs for a single service
 docker compose logs -f app
 docker compose logs -f postgres
+docker compose logs -f redis
 
 # Stop services (containers removed, data volume kept)
 docker compose down
@@ -103,108 +356,66 @@ docker compose ps
 
 ### How it works
 
-Docker Compose starts two services defined in `docker-compose.yaml`:
+Docker Compose starts three services defined in `docker-compose.yaml`:
 
-| Service    | Image / build      | Purpose                                      |
-| ---------- | ------------------ | -------------------------------------------- |
+| Service | Image / build | Purpose |
+| ------- | ------------- | ------- |
 | `postgres` | `postgres:16-alpine` | PostgreSQL database with persistent storage |
-| `app`      | Built from `Dockerfile` | NestJS application (production build)   |
+| `redis` | `redis:7-alpine` | Job queue for background image processing |
+| `app` | Built from `Dockerfile` | NestJS application (production build) |
 
 **Startup order**
 
-1. The `postgres` service starts and runs a health check (`pg_isready`).
-2. On first run, PostgreSQL creates the user and database from `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB`.
-3. Once Postgres is healthy, the `app` service starts.
-4. The Nest app listens on the port defined by `PORT` (default `3000`).
+1. `postgres` starts and runs a health check (`pg_isready`).
+2. `redis` starts.
+3. Once Postgres is healthy, `app` starts.
+4. The entrypoint runs pending TypeORM migrations, then starts the Nest application.
+5. The queue worker runs inside the same `app` process (no separate worker container needed).
 
-**Environment variables**
+**Environment variables in Docker**
 
-- Variables are loaded from `.env` at **container runtime**, not baked into the Docker image.
-- `.env` is listed in `.gitignore` and excluded from the image via `.dockerignore` — keep real secrets only in `.env`.
-- Use `.env.example` as a safe, committable template with placeholder values.
-- Inside Docker, `DATABASE_HOST` is overridden to `postgres` (the Compose service name). For local development without Docker, use `DATABASE_HOST=localhost` in `.env`.
+- Variables are loaded from `.env` at **container runtime**, not baked into the image.
+- `.env` is in `.gitignore` and excluded from the image via `.dockerignore`.
+- Inside Docker, `DATABASE_HOST` is set to `postgres` and `REDIS_HOST` to `redis` (Compose service names). For local development without Docker, use `localhost` for both.
 
 **Data persistence**
 
-Database files are stored in a Docker volume named `postgres_data`. Running `docker compose down` stops containers but keeps the data. To reset the database completely, run `docker compose down -v`.
-
-**When you change `.env`**
-
-Editing `.env` does not rebuild the image. Recreate containers to apply new values:
-
-```bash
-docker compose up -d
-```
-
-Note: changing `POSTGRES_*` variables only affects a **new** database. If the `postgres_data` volume already exists, update credentials in PostgreSQL manually or remove the volume with `docker compose down -v` (this deletes all data).
+Database files are stored in the `postgres_data` Docker volume. `docker compose down` stops containers but keeps data. To reset the database: `docker compose down -v`.
 
 **When you change application code**
 
-Rebuild the app image before restarting:
-
 ```bash
 docker compose up -d --build
 ```
-
-On container start, the entrypoint runs pending TypeORM migrations before starting the Nest application.
 
 **When you add a new migration**
 
-Rebuild and restart so the new migration file is included in the image:
+Rebuild and restart the `app` container so the migration is included and applied automatically:
 
 ```bash
 docker compose up -d --build
 ```
 
-## Run tests
+For local development, you can also run migrations manually after building:
+
+```bash
+npm run build
+npm run migration:run
+```
+
+## Tests
 
 ```bash
 # unit tests
-$ npm run test
+npm run test
 
 # e2e tests
-$ npm run test:e2e
+npm run test:e2e
 
 # test coverage
-$ npm run test:cov
+npm run test:cov
 ```
-
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
 
 ## License
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+UNLICENSED
