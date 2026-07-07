@@ -15,7 +15,7 @@ export default new DataSource({
     entities: [runningFromDist ? 'dist/**/*.entity.js' : 'src/**/*.entity.ts'],
     migrations: [
         runningFromDist
-            ? 'dist/database/migrations/*.js'
-            : 'src/database/migrations/*.ts',
+            ? 'dist/modules/database/migrations/*.js'
+            : 'src/modules/database/migrations/*.ts',
     ],
 });

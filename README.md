@@ -2,6 +2,43 @@
 
 REST API for uploading, processing, and serving images. Built with **NestJS**, **PostgreSQL**, **Redis**, **BullMQ**, **Sharp**, and **Amazon S3**.
 
+## Table of contents
+
+- [Features](#features)
+- [Tech stack](#tech-stack)
+- [Getting started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [1. Configure environment](#1-configure-environment)
+  - [2. Start PostgreSQL and Redis (Docker)](#2-start-postgresql-and-redis-docker)
+  - [3. Run the application locally (optional)](#3-run-the-application-locally-optional)
+  - [Running entirely in Docker](#running-entirely-in-docker)
+- [API documentation (Swagger)](#api-documentation-swagger)
+- [Image processing flow](#image-processing-flow)
+  - [Image statuses](#image-statuses)
+- [API endpoints](#api-endpoints)
+  - [`POST /images`](#post-images)
+  - [`GET /images/:id/status`](#get-imagesidstatus)
+  - [`GET /images/:id`](#get-imagesid)
+  - [`GET /images`](#get-images)
+- [Presigned S3 URLs](#presigned-s3-urls)
+- [Environment variables](#environment-variables)
+- [Database migrations](#database-migrations)
+  - [When migrations run](#when-migrations-run)
+  - [Run pending migrations](#run-pending-migrations)
+  - [Generate a migration from entity changes](#generate-a-migration-from-entity-changes)
+  - [Create an empty migration](#create-an-empty-migration)
+  - [Revert the last migration](#revert-the-last-migration)
+  - [Workflow after adding a migration](#workflow-after-adding-a-migration)
+  - [Reset the database](#reset-the-database)
+- [Docker](#docker)
+  - [Prerequisites](#prerequisites-1)
+  - [Quick start](#quick-start)
+  - [Local development with Docker infrastructure](#local-development-with-docker-infrastructure)
+  - [Common commands](#common-commands)
+  - [How it works](#how-it-works)
+- [Tests](#tests)
+- [License](#license)
+
 ## Features
 
 - Upload images in common formats (JPEG, PNG, WebP, GIF, AVIF)
@@ -281,6 +318,120 @@ When you call `GET /images` or `GET /images/:id`, the API returns a **presigned 
 
 See `.env.example` for a full template.
 
+## Database migrations
+
+This project uses **TypeORM migrations** (not `synchronize`). Schema changes are versioned as TypeScript files and applied explicitly.
+
+| Path | Purpose |
+| ---- | ------- |
+| `src/modules/database/migrations/` | Migration files |
+| `src/modules/database/data-source.ts` | TypeORM CLI data source (local + Docker) |
+| `docker-entrypoint.sh` | Runs pending migrations before the app starts in Docker |
+
+### When migrations run
+
+| Environment | How migrations are applied |
+| ----------- | -------------------------- |
+| **Docker (`app` container)** | Automatically on container start (`docker-entrypoint.sh`) |
+| **Local development** | Manually via `npm run migration:run` (after first DB setup) |
+
+On a **fresh database**, ensure migrations have run at least once before using the API:
+
+```bash
+# Option A — Docker applies migrations when app starts
+docker compose up -d
+
+# Option B — local app with Dockerized Postgres/Redis
+docker compose up -d postgres redis
+npm run migration:run
+npm run start:dev
+```
+
+### Run pending migrations
+
+PostgreSQL must be running and `.env` must point at it (`DATABASE_HOST=localhost` for local dev).
+
+```bash
+npm run migration:run
+```
+
+This builds the project and runs all pending migrations against the database configured in `.env`.
+
+To run migrations in production/Docker (without rebuilding first):
+
+```bash
+npm run migration:run:prod
+```
+
+### Generate a migration from entity changes
+
+After you change an entity (e.g. `src/modules/image/entities/image.entity.ts`), generate a migration that reflects the diff:
+
+1. Ensure PostgreSQL is running and the database is reachable.
+2. Run:
+
+```bash
+npm run migration:generate src/modules/database/migrations/DescribeYourChange
+```
+
+Example:
+
+```bash
+npm run migration:generate src/modules/database/migrations/AddTitleIndexToImage
+```
+
+This will:
+
+1. Build the project (`npm run build`)
+2. Compare compiled entities with the current database schema
+3. Create a new file under `src/modules/database/migrations/`
+
+**Always review the generated migration** before committing — TypeORM may not detect every change perfectly.
+
+### Create an empty migration
+
+For manual SQL or data changes that are not inferred from entities:
+
+```bash
+npm run migration:create src/modules/database/migrations/DescribeYourChange
+```
+
+Edit the new file in `src/modules/database/migrations/`, then apply it with `npm run migration:run`.
+
+### Revert the last migration
+
+```bash
+npm run migration:revert
+```
+
+### Workflow after adding a migration
+
+**Local development:**
+
+```bash
+npm run migration:run
+npm run start:dev
+```
+
+**Docker:**
+
+```bash
+docker compose up -d --build
+```
+
+The new migration file is copied into the image at build time and applied when the `app` container starts.
+
+### Reset the database
+
+To wipe all data and re-apply migrations from scratch:
+
+```bash
+docker compose down -v
+docker compose up -d
+```
+
+`down -v` removes the `postgres_data` volume. The next `up` creates an empty database and runs all migrations again.
+
 ## Docker
 
 Run PostgreSQL, Redis, and optionally the application using Docker Compose.
@@ -307,7 +458,7 @@ curl http://localhost:3000
 
 The API is at `http://localhost:3000`. Swagger UI at `http://localhost:3000/api`.
 
-Migrations run **automatically** when the `app` container starts — you do not need to run `npm run migration:run` manually.
+Migrations run **automatically** when the `app` container starts. See [Database migrations](#database-migrations) for generating and running migrations manually.
 
 ### Local development with Docker infrastructure
 
@@ -396,12 +547,7 @@ Rebuild and restart the `app` container so the migration is included and applied
 docker compose up -d --build
 ```
 
-For local development, you can also run migrations manually after building:
-
-```bash
-npm run build
-npm run migration:run
-```
+See [Database migrations](#database-migrations) for generating migrations and local workflows.
 
 ## Tests
 
