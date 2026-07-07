@@ -8,7 +8,6 @@ export async function processImageToWebp(
     height: number,
 ): Promise<Buffer> {
     return sharp(buffer)
-        .rotate()
         .resize(width, height, { fit: 'cover' })
         .webp({ quality: WEBP_QUALITY })
         .toBuffer();
