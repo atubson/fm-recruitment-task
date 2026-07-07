@@ -20,6 +20,8 @@
     "test:watch": "jest --config ./test/jest-unit.json --watch",
     "test:cov": "jest --config ./test/jest-unit.json --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --config ./test/jest-unit.json --runInBand",
+    "docker:e2e:up": "docker compose -f docker-compose.e2e.yaml --env-file .env.e2e up -d --build --wait",
+    "docker:e2e:down": "docker compose -f docker-compose.e2e.yaml --env-file .env.e2e down -v",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "migration:generate": "npm run build && typeorm migration:generate -d dist/modules/database/data-source.js",
     "migration:create": "typeorm migration:create",

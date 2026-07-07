@@ -37,6 +37,8 @@ REST API for uploading, processing, and serving images. Built with **NestJS**, *
   - [Common commands](#common-commands)
   - [How it works](#how-it-works)
 - [Tests](#tests)
+  - [E2E tests](#e2e-tests)
+- [Next phases](#next-phases)
 - [License](#license)
 
 ## Features
@@ -555,12 +557,65 @@ See [Database migrations](#database-migrations) for generating migrations and lo
 # unit tests
 npm run test
 
-# e2e tests
-npm run test:e2e
-
 # test coverage
 npm run test:cov
 ```
+
+### E2E tests
+
+E2E uses a **separate Docker Compose project** (`fm-recruitment-task-e2e` via `docker-compose.e2e.yaml`) so Postgres and Redis run on different ports from dev and do not touch your development data.
+
+| Service | Dev (`.env`) | E2E (`.env.e2e`) |
+| ------- | ------------ | ---------------- |
+| PostgreSQL | `localhost:5432` / `nest` | `localhost:5433` / `nest` |
+| Redis | `localhost:6379` | `localhost:6380` |
+
+```bash
+# 1. Create e2e env file
+cp .env.e2e.example .env.e2e
+
+# 2. Start e2e Postgres + Redis and run migrations (migrate-e2e container)
+npm run docker:e2e:up
+
+# 3. Run e2e tests (loads .env.e2e, no build/migrate step)
+npm run test:e2e
+
+# 4. Stop and remove e2e data
+npm run docker:e2e:down
+```
+
+## Next phases
+
+The current implementation is complete for the recruitment task scope. The following improvements would be natural next steps for a production deployment:
+
+### Separate worker process
+
+Today the BullMQ worker (`ImageProcessor`) runs **inside the same NestJS process** as the HTTP API. That is sufficient for development and for this task, but in production you would typically split responsibilities:
+
+- **API containers** — handle HTTP only (`POST /images`, `GET /images`, etc.)
+- **Worker containers** — run a dedicated NestJS entrypoint (or standalone script) that registers only the queue processor and connects to the same Redis and PostgreSQL
+
+This allows independent scaling (more workers under heavy upload load), cleaner restarts, and isolation of CPU-heavy image processing from request latency.
+
+### Extend E2E tests
+
+E2E tests cover all endpoints and validation paths. A few gaps remain:
+
+- **Full async flow** — `POST /images` success tests currently mock `queue.add` so the suite stays fast and deterministic. A follow-up test could let the real worker run, poll `GET /images/:id/status` until `UPLOADED`, then assert `GET /images/:id` returns a valid presigned URL.
+- **Additional formats** — upload E2E currently exercises JPEG and PNG; WebP, GIF, and AVIF are covered in unit tests but could be added to E2E with small fixtures.
+- **CI pipeline** — run `npm run test` and `npm run docker:e2e:up && npm run test:e2e` on every pull request (e.g. GitHub Actions).
+
+### Fix open handles after E2E
+
+Jest may log `Force exiting Jest: Have you considered using --detectOpenHandles` after `npm run test:e2e`. This usually means something keeps the Node event loop alive — commonly BullMQ/Redis connections or the Nest application not fully closing queue workers.
+
+To address this:
+
+1. Run `npm run test:e2e -- --detectOpenHandles` to identify the leaking resource.
+2. Ensure `afterEach` closes the app and any BullMQ `Queue` / `Worker` instances created during tests.
+3. Consider calling `getQueueToken(IMAGE_QUEUE)` and `queue.close()` in E2E teardown, or use a dedicated test module that does not start a live worker when the queue is mocked.
+
+Cleaning this up removes the `forceExit` workaround in `test/jest-e2e.json` and makes the test suite exit cleanly.
 
 ## License
 

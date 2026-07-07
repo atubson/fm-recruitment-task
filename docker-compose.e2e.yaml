@@ -1,0 +1,42 @@
+name: fm-recruitment-task-e2e
+
+services:
+  postgres-e2e:
+    image: postgres:16-alpine
+    env_file:
+      - .env.e2e
+    ports:
+      - '${POSTGRES_PORT}:5432'
+    volumes:
+      - postgres_e2e_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis-e2e:
+    image: redis:7-alpine
+    ports:
+      - '${REDIS_PORT}:6379'
+
+  migrate-e2e:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    entrypoint:
+      - sh
+      - -c
+      - npx typeorm migration:run -d dist/modules/database/data-source.js
+    env_file:
+      - .env.e2e
+    environment:
+      DATABASE_HOST: postgres-e2e
+      DATABASE_PORT: 5432
+    depends_on:
+      postgres-e2e:
+        condition: service_healthy
+    restart: 'no'
+
+volumes:
+  postgres_e2e_data:

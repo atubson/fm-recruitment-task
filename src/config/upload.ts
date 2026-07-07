@@ -26,5 +26,6 @@ export default () => ({
         minWidth: imageLimits.minWidth,
         minHeight: imageLimits.minHeight,
         allowedMimeTypes: [...ALLOWED_IMAGE_MIME_TYPES],
+        temporaryFolder: process.env.UPLOAD_TMP_DIR || './tmp/uploads',
     },
 });

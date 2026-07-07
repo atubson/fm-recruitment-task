@@ -1,7 +1,12 @@
 import { DataSource } from 'typeorm';
 import { config } from 'dotenv';
+import { resolve } from 'path';
 
-config();
+const envPath = process.env.DOTENV_CONFIG_PATH ?? resolve(process.cwd(), '.env');
+
+if (!process.env.DATABASE_HOST) {
+    config({ path: envPath });
+}
 
 const runningFromDist = __filename.replace(/\\/g, '/').includes('/dist/');
 
