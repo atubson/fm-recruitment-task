@@ -588,6 +588,10 @@ npm run docker:e2e:down
 
 The current implementation is complete for the recruitment task scope. The following improvements would be natural next steps for a production deployment:
 
+### Implement Authorization and Authentication
+
+Api should be protected with an authorization/authentication system like OAuth. In the next phase, we should implement it using Passport or similar solutions.
+
 ### Separate worker process
 
 Today the BullMQ worker (`ImageProcessor`) runs **inside the same NestJS process** as the HTTP API. That is sufficient for development and for this task, but in production you would typically split responsibilities:
